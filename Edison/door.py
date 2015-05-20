@@ -14,7 +14,7 @@
 # Distributed as-is; no warranty is given.
 
 ################################################################################
-# Globals
+# Global Constants
 ################################################################################
 
 from twython import Twython, TwythonStreamer
@@ -43,6 +43,13 @@ OAUTH_TOKEN = '3220604167-IvvyfABekUBIhP1twLlgko4ufvwqG8HTYAg5m3F'
 OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
 
 ################################################################################
+# Global Variables
+################################################################################
+
+g_mainloop = False
+g_listen_streamer = None
+
+################################################################################
 # Classes
 ################################################################################
 
@@ -50,8 +57,7 @@ OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
 class ListenStreamer(TwythonStreamer):
     def on_success(self, data):
         if 'text' in data:
-            if DEBUG > 0:
-                print data['text'].encode('utf-8')
+            print data['text'].encode('utf-8')
                 
     def on_error(self, status_code, data):
         print status_code, data
@@ -60,19 +66,21 @@ class ListenStreamer(TwythonStreamer):
         self.disconnect()
 
 ################################################################################
-# Methods
+# Functions
 ################################################################################
 
 # Create a Twitter streamer in a thread
-def create_streamer():
-  g_listen_streamer = ListenStreamer(   APP_KEY, \
+def createStreamer():
+    global g_listen_streamer
+    g_listen_streamer = ListenStreamer( APP_KEY, \
                                         APP_SECRET, \
                                         OAUTH_TOKEN, \
                                         OAUTH_TOKEN_SECRET)
-  g_listen_streamer.statuses.filter(track='@SFE_Fellowship')
+    g_listen_streamer.statuses.filter(track='@SFE_Fellowship')
 
 # Handle ctrl-C events
-def signal_handler(signal, frame):
+def signalHandler(signal, frame):
+    global g_mainloop
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
     g_mainloop = False
@@ -94,10 +102,13 @@ def main():
     
     # Connect to Twitter
     tw = Twython(APP_KEY, APP_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET)
-    listen_thread = threading.Thread(target=create_streamer)
+    listen_thread = threading.Thread(target=createStreamer)
     listen_thread.daemon = True
     listen_thread.start()
     
+    # Register 'ctrl+C' signal handler
+    signal.signal(signal.SIGINT, signalHandler)
+
     # Main loop
     g_mainloop = True
     if DEBUG > 0:
@@ -113,8 +124,11 @@ def main():
         elif in_failure.read() == 0:
             if DEBUG > 0:
                 print 'Fail.'
+
                 
     # Outside of main loop. Cleanup and cuddles.
+    if DEBUG > 0:
+        print 'Cleaning up.'
     g_listen_streamer.stop()
     listen_thread.join(None)
     del listen_thread
