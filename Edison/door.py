@@ -61,16 +61,17 @@ def main():
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
     
     # Main loop
-    g_mainloop = True
+    mainloop = True
     if DEBUG > 0:
         print 'Starting door'
-    while g_mainloop:
-    
+    while mainloop:
+        
         # Poll pins for success or failure
         if in_success.read() == 0:
+            person_ind = 3 - ((2 * in_status_1.read()) + in_status_0.read())
             if DEBUG > 0:
                 print 'Success!'
-                print str(in_status_0.read()) + str(in_status_1.read())
+                print 'Person = ' + NAMES[person_ind]
         elif in_failure.read() == 0:
             if DEBUG > 0:
                 print 'Fail.'
