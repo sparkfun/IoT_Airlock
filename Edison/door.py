@@ -21,6 +21,8 @@ from twython import Twython, TwythonStreamer
 import pygame.camera
 import pygame.image
 import threading
+import signal
+import sys
 import mraa
 import time
 
@@ -44,15 +46,45 @@ OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
 # Classes
 ################################################################################
 
+# Streamer class. Use this to look for commands on Twitter.
+class ListenStreamer(TwythonStreamer):
+    def on_success(self, data):
+        if 'text' in data:
+            if DEBUG > 0:
+                print data['text'].encode('utf-8')
+                
+    def on_error(self, status_code, data):
+        print status_code, data
+        
+    def stop(self):
+        self.disconnect()
+
 ################################################################################
 # Methods
 ################################################################################
 
+# Create a Twitter streamer in a thread
+def create_streamer():
+  g_listen_streamer = ListenStreamer(   APP_KEY, \
+                                        APP_SECRET, \
+                                        OAUTH_TOKEN, \
+                                        OAUTH_TOKEN_SECRET)
+  g_listen_streamer.statuses.filter(track='@SFE_Fellowship')
+
+# Handle ctrl-C events
+def signal_handler(signal, frame):
+    if DEBUG > 0:
+        print 'Ctrl-C pressed. Exiting nicely.'
+    g_mainloop = False
+  
 ################################################################################
 # Main
 ################################################################################
 
 def main():
+
+    global g_mainloop
+    global g_listen_streamer
 
     # Initialize GPIO
     in_success = mraa.Gpio(SUCCESS_PIN)
@@ -60,11 +92,17 @@ def main():
     in_status_0 = mraa.Gpio(STATUS_PIN_0)
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
     
+    # Connect to Twitter
+    tw = Twython(APP_KEY, APP_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET)
+    listen_thread = threading.Thread(target=create_streamer)
+    listen_thread.daemon = True
+    listen_thread.start()
+    
     # Main loop
-    mainloop = True
+    g_mainloop = True
     if DEBUG > 0:
         print 'Starting door'
-    while mainloop:
+    while g_mainloop:
         
         # Poll pins for success or failure
         if in_success.read() == 0:
@@ -76,6 +114,10 @@ def main():
             if DEBUG > 0:
                 print 'Fail.'
                 
-    
+    # Outside of main loop. Cleanup and cuddles.
+    g_listen_streamer.stop()
+    listen_thread.join(None)
+    del listen_thread
+                
 # Run main
 main()
