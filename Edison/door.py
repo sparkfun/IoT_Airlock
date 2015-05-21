@@ -30,6 +30,7 @@ import signal
 import sys
 import mraa
 import time
+import struct
 
 # Parameters
 DEBUG = 1
@@ -211,15 +212,21 @@ def signalHandler(signal, frame):
     
 # Let someone in
 def letIn(w_ch):
+
+    # Unlock the door
+    if DEBUG > 0:
+        print 'Unlocking inner door.'
     bleSend(w_ch, MSG_UNLOCK)
+
+    # Wait for that door to be opened and then closed
+    if DEBUG > 0:
+        print 'Waiting for inner door to be opened and closed.'
     time.sleep(3)
     bleSend(w_ch, MSG_LOCK)
     
 # Send a message to a Lockitron
 def bleSend(w_ch, msg):
     msg = struct.pack('i', msg)
-    if DEBUG > 0:
-        print "BLE send: " + str(msg)
     w_ch.write(msg)
   
 ################################################################################
