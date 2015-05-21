@@ -29,6 +29,7 @@ import time
 # Parameters
 DEBUG = 1
 IMG_NAME = 'intruder.jpeg'
+ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
 INTRUDER_MSG = 'Someone is at the door.'
 NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
@@ -58,7 +59,7 @@ g_listen_streamer = None
 class ListenStreamer(TwythonStreamer):
 
     # [Constructor] Inherits a Twython streamer
-     def __init__(self, parent, app_key, app_secret, oauth_token, 
+    def __init__(self, parent, app_key, app_secret, oauth_token, 
                     oauth_token_secret, timeout=300, retry_count=None, 
                     retry_in=10, client_args=None, handlers=None, 
                     chunk_size=1):
@@ -118,7 +119,9 @@ class TweetFeed:
         
     # [Public] Start streamer in a thread
     def startStreamer(self, search_terms):
-        self.track_terms = [''.join([x, ' ']) for x in search_terms
+        if DEBUG > 0:
+            print 'Starting listening streamer'
+        self.track_terms = [''.join([x, ' ']) for x in search_terms]
         self.listen_thread = threading.Thread( \
                 target=self.__createStreamer, args=self.auth_args)
         self.listen_thread.daemon = True
@@ -129,6 +132,13 @@ class TweetFeed:
         self.track_stream.stop()
         self.listen_thread.join(timeout)
         del self.listen_thread
+
+    # [Public] Send a Tweet
+    def tweet(self, msg):
+        try:
+            self.twitter.update_status(status=msg)
+        except TwythonError as e:
+            print e
  
 ################################################################################
 # Functions
@@ -157,9 +167,17 @@ def main():
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
     
     # Connect to Twitter and start listening
-    tf = TweetFeed({APP_KEY, APP_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET})
+    tf = TweetFeed({'app_key': APP_KEY, \
+                    'app_secret': APP_SECRET, \
+                    'oauth_token': OAUTH_TOKEN, \
+                    'oauth_token_secret': OAUTH_TOKEN_SECRET})
     tf.startStreamer([HANDLE])
     
+    # Send a good morning Tweet
+    time_now = time.strftime("%m/%d/%Y (%H:%M:%S)")
+    msg = time_now + ' ' + ONLINE_MSG
+    tf.tweet(msg)
+
     # Register 'ctrl+C' signal handler
     signal.signal(signal.SIGINT, signalHandler)
 
