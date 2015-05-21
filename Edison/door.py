@@ -31,6 +31,7 @@ DEBUG = 1
 IMG_NAME = 'intruder.jpeg'
 INTRUDER_MSG = 'Someone is at the door.'
 NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
+HANDLE = '@SFE_Fellowship'
 SUCCESS_PIN = 31    # GP44
 FAILURE_PIN = 45    # GP45
 STATUS_PIN_0 = 32   # GP46
@@ -55,28 +56,83 @@ g_listen_streamer = None
 
 # Streamer class. Use this to look for commands on Twitter.
 class ListenStreamer(TwythonStreamer):
+
+    # [Constructor] Inherits a Twython streamer
+     def __init__(self, parent, app_key, app_secret, oauth_token, 
+                    oauth_token_secret, timeout=300, retry_count=None, 
+                    retry_in=10, client_args=None, handlers=None, 
+                    chunk_size=1):
+        TwythonStreamer.__init__(self, app_key, app_secret, oauth_token, 
+                    oauth_token_secret, timeout=300, retry_count=None, 
+                    retry_in=10, client_args=None, handlers=None, 
+                    chunk_size=1)
+        self.parent = parent
+
+    # Callback from streamer when tweet matches the search term(s)
     def on_success(self, data):
         if 'text' in data:
             print data['text'].encode('utf-8')
                 
+    # Callback from streamer if error occurs
     def on_error(self, status_code, data):
         print status_code, data
         
+    # Called from main thread to stop the streamer
     def stop(self):
         self.disconnect()
 
+# TweetFeed class sets up the streamer and provides access to the tweets
+class TweetFeed:
+
+    # [Constructor] Set up streamer thread
+    def __init__(self, twitter_auth):
+    
+        # Extract authentication tokens
+        app_key = twitter_auth['app_key']
+        app_secret = twitter_auth['app_secret']
+        oauth_token = twitter_auth['oauth_token']
+        oauth_token_secret = twitter_auth['oauth_token_secret']
+        self.auth_args = (  app_key, 
+                            app_secret, 
+                            oauth_token, 
+                            oauth_token_secret)
+                            
+        # Setup Twitter object to send tweets
+        self.twitter = Twython( app_key, 
+                                app_secret, 
+                                oauth_token, 
+                                oauth_token_secret)
+ 
+    # [Private] Set up streamer and filter(s)
+    def __createStreamer(   self, 
+                            app_key, 
+                            app_secret, 
+                            oauth_token, 
+                            oauth_token_secret ):
+        self.track_stream = ListenStreamer( self, 
+                                            app_key, 
+                                            app_secret,
+                                            oauth_token,
+                                            oauth_token_secret )
+        self.track_stream.statuses.filter(track=self.track_terms)
+        
+    # [Public] Start streamer in a thread
+    def startStreamer(self, search_terms):
+        self.track_terms = [''.join([x, ' ']) for x in search_terms
+        self.listen_thread = threading.Thread( \
+                target=self.__createStreamer, args=self.auth_args)
+        self.listen_thread.daemon = True
+        self.listen_thread.start()
+        
+    # [Public] Stop streamer
+    def stopStreamer(self, timeout=None):
+        self.track_stream.stop()
+        self.listen_thread.join(timeout)
+        del self.listen_thread
+ 
 ################################################################################
 # Functions
 ################################################################################
-
-# Create a Twitter streamer in a thread
-def createStreamer():
-    global g_listen_streamer
-    g_listen_streamer = ListenStreamer( APP_KEY, \
-                                        APP_SECRET, \
-                                        OAUTH_TOKEN, \
-                                        OAUTH_TOKEN_SECRET)
-    g_listen_streamer.statuses.filter(track='@SFE_Fellowship')
 
 # Handle ctrl-C events
 def signalHandler(signal, frame):
@@ -100,11 +156,9 @@ def main():
     in_status_0 = mraa.Gpio(STATUS_PIN_0)
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
     
-    # Connect to Twitter
-    tw = Twython(APP_KEY, APP_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET)
-    listen_thread = threading.Thread(target=createStreamer)
-    listen_thread.daemon = True
-    listen_thread.start()
+    # Connect to Twitter and start listening
+    tf = TweetFeed({APP_KEY, APP_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET})
+    tf.startStreamer([HANDLE])
     
     # Register 'ctrl+C' signal handler
     signal.signal(signal.SIGINT, signalHandler)
@@ -129,9 +183,9 @@ def main():
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
         print 'Cleaning up.'
-    g_listen_streamer.stop()
-    listen_thread.join(None)
-    del listen_thread
+    tf.stopStreamer()
+    del tf
+    pygame.quit()
                 
 # Run main
 main()
