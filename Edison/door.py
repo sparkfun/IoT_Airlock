@@ -77,6 +77,7 @@ class ListenStreamer(TwythonStreamer):
     # Callback from streamer if error occurs
     def on_error(self, status_code, data):
         print status_code, data
+        self.stop()
         
     # Called from main thread to stop the streamer
     def stop(self):
