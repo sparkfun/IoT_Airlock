@@ -10,6 +10,10 @@
 # This code is beerware; if you see me (or any other SparkFun 
 # employee) at the local, and you've found our code helpful, please
 # buy us a round!
+# 
+# To install bluepy:
+# http://shawnhymel.com/665/using-python-and-ble-to-receive-data-from-the-rfduino/
+# Copy the bluepy folder to IoT_Airlock/Edison
 #
 # Distributed as-is; no warranty is given.
 
@@ -20,6 +24,7 @@
 from twython import Twython, TwythonStreamer
 import pygame.camera
 import pygame.image
+import bluepy.btle import UUID, Peripheral
 import threading
 import signal
 import sys
@@ -28,15 +33,28 @@ import time
 
 # Parameters
 DEBUG = 1
+STOP_STREAM_ON_FAIL = True
 IMG_NAME = 'intruder.jpeg'
 ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
+SUCCESS_MSG = 'Welcome home, '
 INTRUDER_MSG = 'Someone is at the door.'
 NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
+INNER_ADDR = 'F9:D8:C2:B9:77:E9'
+OUTER_ADDR = ''
 SUCCESS_PIN = 31    # GP44
 FAILURE_PIN = 45    # GP45
 STATUS_PIN_0 = 32   # GP46
 STATUS_PIN_1 = 46   # GP476
+
+# Bluetooth message constants
+MSG_LOCK = 0x10
+MSG_UNLOCK = 0x11
+MSG_STATE_REQ = 0x12
+
+# Define read and write UUIDs
+READ_UUID = UUID(0x2221)
+WRITE_UUID = UUID(0x2222)
 
 # Twitter credentials
 APP_KEY = 'sppWdEK9E3RVjo70zOKr6p7y1'
@@ -49,7 +67,6 @@ OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
 ################################################################################
 
 g_mainloop = False
-g_listen_streamer = None
 
 ################################################################################
 # Classes
@@ -77,7 +94,8 @@ class ListenStreamer(TwythonStreamer):
     # Callback from streamer if error occurs
     def on_error(self, status_code, data):
         print status_code, data
-        self.stop()
+        if STOP_STREAM_ON_FAIL:
+            self.stop()
         
     # Called from main thread to stop the streamer
     def stop(self):
@@ -140,6 +158,18 @@ class TweetFeed:
             self.twitter.update_status(status=msg)
         except TwythonError as e:
             print e
+            
+    # [Public] Tweet a photo
+    def tweetPhoto(self, msg, img_name):
+        fp = open(img_name, 'rb')
+        try:
+            self.twitter.upload_media(media=fp)
+            self.twitter.update_statuses(media_ids=[image_id['media_id']], \
+                                                                status=msg)
+        except TwythonError as e:
+            print e
+        finally:
+            fp.close()
  
 ################################################################################
 # Functions
@@ -151,6 +181,25 @@ def signalHandler(signal, frame):
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
     g_mainloop = False
+    
+# Take a photo of the person at the door and Tweet it
+def tweetPhoto(tf, cam):
+    
+    # Take a photo with the webcam and save it
+    img = cam.get_image()
+    pygame.image.save(img, IMG_NAME)
+    
+    # Construct the message
+    time_now = time.strftime("%m/%d/%Y (%H:%M:%S)")
+    msg = time_now + ' ' + INTRUDER_MSG
+    for n in NAMES:
+      msg = msg + ' ' + n
+    if DEBUG > 0:
+        print msg
+    
+    # Post to Twitter
+    tf.tweetPhoto(INTRUDER_MSG, IMG_NAME)
+    
   
 ################################################################################
 # Main
@@ -159,13 +208,24 @@ def signalHandler(signal, frame):
 def main():
 
     global g_mainloop
-    global g_listen_streamer
 
     # Initialize GPIO
     in_success = mraa.Gpio(SUCCESS_PIN)
     in_failure = mraa.Gpio(FAILURE_PIN)
     in_status_0 = mraa.Gpio(STATUS_PIN_0)
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
+    
+    # Create Bluetooth connections to the RFduinos on the doors
+    inner_door = Peripheral(INNER_ADDR, 'random')
+    
+    # Create handles to the Bluetooth read and write characteristics
+    inner_r_ch = inner_door.getCharacteristic(uuid=READ_UUID)[0]
+    inner_w_ch = inner_door.getCharacteristic(uuid=WRITE_UUID)[0]
+    
+    # Set up camera
+    pygame.camera.init()
+    cam = pygame.camera.Camera(pygame.camera.list_cameras()[0])
+    cam.start()
     
     # Connect to Twitter and start listening
     tf = TweetFeed({'app_key': APP_KEY, \
@@ -188,15 +248,20 @@ def main():
         print 'Starting door'
     while g_mainloop:
         
-        # Poll pins for success or failure
-        if in_success.read() == 0:
+        # Poll pins for success or failure (falling edge)
+        state_success = in_success.read()
+        state_failure = in_failure.read()
+        if (state_success == 0) and (prev_success == 1):
             person_ind = 3 - ((2 * in_status_1.read()) + in_status_0.read())
             if DEBUG > 0:
                 print 'Success!'
                 print 'Person = ' + NAMES[person_ind]
-        elif in_failure.read() == 0:
+            tf.tweet(SUCCESS_MSG + NAMES[person_ind])
+        elif (state_failure == 0) and (prev_failure == 1):
             if DEBUG > 0:
                 print 'Fail.'
+            tweetPhoto(tf, cam)
+        prev_success = state_success
 
                 
     # Outside of main loop. Cleanup and cuddles.
@@ -204,6 +269,7 @@ def main():
         print 'Cleaning up.'
     tf.stopStreamer()
     del tf
+    pygame.camera.quit()
     pygame.quit()
                 
 # Run main
