@@ -207,7 +207,20 @@ def signalHandler(signal, frame):
     global g_mainloop
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
-    g_mainloop = False    
+    g_mainloop = False
+    
+# Let someone in
+def letIn(w_ch):
+    bleSend(w_ch, MSG_UNLOCK)
+    time.sleep(3)
+    bleSend(w_ch, MSG_LOCK)
+    
+# Send a message to a Lockitron
+def bleSend(w_ch, msg):
+    msg = struct.pack('i', msg)
+    if DEBUG > 0:
+        print "BLE send: " + str(msg)
+    w_ch.write(msg)
   
 ################################################################################
 # Main
@@ -264,6 +277,7 @@ def main():
                 print 'Success!'
                 print 'Person = ' + NAMES[person_ind]
             tf.tweet(SUCCESS_MSG + NAMES[person_ind])
+            letIn(inner_w_ch)
         elif (state_failure == 0) and (prev_failure == 1):
             if DEBUG > 0:
                 print 'Fail.'
