@@ -21,10 +21,10 @@
 # Global Constants
 ################################################################################
 
-from twython import Twython, TwythonStreamer
+from twython import Twython, TwythonStreamer, TwythonError
+from bluepy.btle import UUID, Peripheral
 import pygame.camera
 import pygame.image
-import bluepy.btle import UUID, Peripheral
 import threading
 import signal
 import sys
@@ -37,8 +37,8 @@ STOP_STREAM_ON_FAIL = True
 IMG_NAME = 'intruder.jpeg'
 ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
 SUCCESS_MSG = 'Welcome home, '
-INTRUDER_MSG = 'Someone is at the door.'
-NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
+FAILURE_MSG = 'Someone is at the door.'
+NAMES = ['@ShawnHymel'] #, '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = ''
@@ -154,17 +154,44 @@ class TweetFeed:
 
     # [Public] Send a Tweet
     def tweet(self, msg):
+
+        # Construct the message
+        time_now = time.strftime('%m/%d/%Y (%H:%M:%S)')
+        msg = time_now + ' ' + msg
+        if DEBUG > 0:
+            print msg
+
+        # Post to Twitter
         try:
             self.twitter.update_status(status=msg)
         except TwythonError as e:
             print e
             
     # [Public] Tweet a photo
-    def tweetPhoto(self, msg, img_name):
-        fp = open(img_name, 'rb')
+    def tweetPhoto(self, cam, msg):
+
+        # Take a photo
+        cam.start()
+        img = cam.get_image()
+        pygame.image.save(img, IMG_NAME)
+        cam.stop()
+
+        # Wait for file to finish writing
+        time.sleep(1)
+        
+        # Construct the message
+        time_now = time.strftime('%m/%d/%Y (%H:%M:%S)')
+        msg = time_now + ' ' + msg
+        for n in NAMES:
+            msg = msg + ' ' + n
+        if DEBUG > 0:
+            print msg
+
+        # Post to Twitter
         try:
-            self.twitter.upload_media(media=fp)
-            self.twitter.update_statuses(media_ids=[image_id['media_id']], \
+            fp = open(IMG_NAME, 'rb')
+            image_id = self.twitter.upload_media(media=fp)
+            self.twitter.update_status(media_ids=[image_id['media_id']], \
                                                                 status=msg)
         except TwythonError as e:
             print e
@@ -180,26 +207,7 @@ def signalHandler(signal, frame):
     global g_mainloop
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
-    g_mainloop = False
-    
-# Take a photo of the person at the door and Tweet it
-def tweetPhoto(tf, cam):
-    
-    # Take a photo with the webcam and save it
-    img = cam.get_image()
-    pygame.image.save(img, IMG_NAME)
-    
-    # Construct the message
-    time_now = time.strftime("%m/%d/%Y (%H:%M:%S)")
-    msg = time_now + ' ' + INTRUDER_MSG
-    for n in NAMES:
-      msg = msg + ' ' + n
-    if DEBUG > 0:
-        print msg
-    
-    # Post to Twitter
-    tf.tweetPhoto(INTRUDER_MSG, IMG_NAME)
-    
+    g_mainloop = False    
   
 ################################################################################
 # Main
@@ -214,18 +222,19 @@ def main():
     in_failure = mraa.Gpio(FAILURE_PIN)
     in_status_0 = mraa.Gpio(STATUS_PIN_0)
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
+    prev_success = 0
+    prev_failure = 0
     
     # Create Bluetooth connections to the RFduinos on the doors
     inner_door = Peripheral(INNER_ADDR, 'random')
     
     # Create handles to the Bluetooth read and write characteristics
-    inner_r_ch = inner_door.getCharacteristic(uuid=READ_UUID)[0]
-    inner_w_ch = inner_door.getCharacteristic(uuid=WRITE_UUID)[0]
+    inner_r_ch = inner_door.getCharacteristics(uuid=READ_UUID)[0]
+    inner_w_ch = inner_door.getCharacteristics(uuid=WRITE_UUID)[0]
     
     # Set up camera
     pygame.camera.init()
     cam = pygame.camera.Camera(pygame.camera.list_cameras()[0])
-    cam.start()
     
     # Connect to Twitter and start listening
     tf = TweetFeed({'app_key': APP_KEY, \
@@ -235,9 +244,7 @@ def main():
     tf.startStreamer([HANDLE])
     
     # Send a good morning Tweet
-    time_now = time.strftime("%m/%d/%Y (%H:%M:%S)")
-    msg = time_now + ' ' + ONLINE_MSG
-    tf.tweet(msg)
+    tf.tweet(ONLINE_MSG)
 
     # Register 'ctrl+C' signal handler
     signal.signal(signal.SIGINT, signalHandler)
@@ -260,9 +267,9 @@ def main():
         elif (state_failure == 0) and (prev_failure == 1):
             if DEBUG > 0:
                 print 'Fail.'
-            tweetPhoto(tf, cam)
+            tf.tweetPhoto(cam, FAILURE_MSG)
         prev_success = state_success
-
+        prev_failure = state_failure
                 
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
