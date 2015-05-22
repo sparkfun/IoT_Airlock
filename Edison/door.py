@@ -42,12 +42,17 @@ FAILURE_MSG = 'Someone is at the door.'
 NAMES = ['@ShawnHymel'] #, '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
-#INNER_ADDR = 'D4:2C:92:60:C2:D5'
-OUTER_ADDR = ''
+OUTER_ADDR = 'D4:2C:92:60:C2:D5'
+
+# GPIO pins
 SUCCESS_PIN = 31    # GP44
 FAILURE_PIN = 45    # GP45
 STATUS_PIN_0 = 32   # GP46
-STATUS_PIN_1 = 46   # GP476
+STATUS_PIN_1 = 46   # GP47
+REED_OUTER_PIN = 33 # GP48
+DOORBELL_PIN = 47   # GP49
+REED_INNER_PIN = 14 # GP13
+DENY_PIN = 36       # GP14
 
 # Bluetooth message constants
 MSG_LOCK = 0x10
@@ -211,8 +216,8 @@ def signalHandler(signal, frame):
         print 'Ctrl-C pressed. Exiting nicely.'
     g_mainloop = False
     
-# Let someone in
-def letIn(p, w_ch):
+# Let someone in or out of the airlock
+def openDoor(p, w_ch, reed):
 
     # Unlock the door
     if DEBUG > 0:
@@ -222,7 +227,11 @@ def letIn(p, w_ch):
     # Wait for that door to be opened and then closed
     if DEBUG > 0:
         print 'Waiting for inner door to be opened and closed.'
-    time.sleep(3)
+    while reed.read() == 0
+        pass
+    while reed.read() == 1
+        pass
+    time.sleep(2)
     bleSend(p, w_ch, MSG_LOCK)
     
 # Send a message to a Lockitron
@@ -243,15 +252,24 @@ def main():
     in_failure = mraa.Gpio(FAILURE_PIN)
     in_status_0 = mraa.Gpio(STATUS_PIN_0)
     in_status_1 = mraa.Gpio(STATUS_PIN_1)
+    doorbell = mraa.Gpio(DOORBELL_PIN)
+    reed_outer = mraa.Gpio(REED_OUTER_PIN)
+    reed_inner = mraa.Gpio(REED_INNER_PIN)
+    deny_button = mraa.Gpio(DENY_PIN)
     prev_success = 0
     prev_failure = 0
+    prev_doorbell = 0
+    prev_deny = 0
     
     # Create Bluetooth connections to the RFduinos on the doors
     inner_door = Peripheral(INNER_ADDR, 'random')
+    outer_door = Peripheral(OUTER_ADDR, 'random')
     
     # Create handles to the Bluetooth read and write characteristics
     inner_r_ch = inner_door.getCharacteristics(uuid=READ_UUID)[0]
     inner_w_ch = inner_door.getCharacteristics(uuid=WRITE_UUID)[0]
+    outer_r_ch = outer_door.getCharacteristics(uuid=READ_UUID)[0]
+    outer_w_ch = outer_door.getCharacteristics(uuid=WRITE_UUID)[0]
     
     # Set up camera
     pygame.camera.init()
@@ -279,6 +297,10 @@ def main():
         # Poll pins for success or failure (falling edge)
         state_success = in_success.read()
         state_failure = in_failure.read()
+        state_doorbell = doorbell.read()
+        state_deny = deny_button.read()
+        
+        # Look for success in access panel
         if (state_success == 0) and (prev_success == 1):
             person_ind = 3 - ((2 * in_status_1.read()) + in_status_0.read())
             if DEBUG > 0:
@@ -295,14 +317,30 @@ def main():
             #        inner_door.connect(INNER_ADDR, 'random')
             #    except BTLEException as e:
             #        print 'Could not connect'
-            letIn(inner_door, inner_w_ch)
+            openDoor(inner_door, inner_w_ch, reed_inner)
 
+        # Look for failure in access panel
         elif (state_failure == 0) and (prev_failure == 1):
             if DEBUG > 0:
                 print 'Fail.'
             tf.tweetPhoto(cam, FAILURE_MSG)
+            
+        # Look for doorbell push
+        elif (state_doorbell == 0) and (prev_doorbell == 1):
+            if DEBUG > 0:
+                print 'Doorbell pressed.'
+            openDoor(outer_door, outer_w_ch, reed_outer)
+            
+        # Look for deny button push
+        elif (state_deny == 0) and (prev_deny == 1):
+            if DEBUG > 0:
+                print 'DENIED. Go away, and never come back.'
+            openOuter(outer_door, outer_w_ch, reed_outer)
+        
         prev_success = state_success
         prev_failure = state_failure
+        prev_doorbell = state_doorbell
+        prev_deny = state_deny
                 
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
