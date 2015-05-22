@@ -41,8 +41,8 @@ SUCCESS_MSG = 'Welcome home, '
 FAILURE_MSG = 'Someone is at the door.'
 NAMES = ['@ShawnHymel'] #, '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
-#INNER_ADDR = 'F9:D8:C2:B9:77:E9'
-INNER_ADDR = 'D4:2C:92:60:C2:D5'
+INNER_ADDR = 'F9:D8:C2:B9:77:E9'
+#INNER_ADDR = 'D4:2C:92:60:C2:D5'
 OUTER_ADDR = ''
 SUCCESS_PIN = 31    # GP44
 FAILURE_PIN = 45    # GP45
@@ -212,21 +212,21 @@ def signalHandler(signal, frame):
     g_mainloop = False
     
 # Let someone in
-def letIn(w_ch):
+def letIn(p, w_ch):
 
     # Unlock the door
     if DEBUG > 0:
         print 'Unlocking inner door.'
-    bleSend(w_ch, MSG_UNLOCK)
+    bleSend(p, w_ch, MSG_UNLOCK)
 
     # Wait for that door to be opened and then closed
     if DEBUG > 0:
         print 'Waiting for inner door to be opened and closed.'
     time.sleep(3)
-    bleSend(w_ch, MSG_LOCK)
+    bleSend(p, w_ch, MSG_LOCK)
     
 # Send a message to a Lockitron
-def bleSend(w_ch, msg):
+def bleSend(p, w_ch, msg):
     msg = struct.pack('i', msg)
     w_ch.write(msg)
   
@@ -285,7 +285,18 @@ def main():
                 print 'Success!'
                 print 'Person = ' + NAMES[person_ind]
             tf.tweet(SUCCESS_MSG + NAMES[person_ind])
-            letIn(inner_w_ch)
+            
+            # Make sure we have a BLE connection first
+            #ble_state = inner_door.status()['state'][0]
+            #while ble_state != 'conn':
+            #    if DEBUG > 0:
+            #        print 'Inner door disconnected. Trying to connect...'
+            #    try:
+            #        inner_door.connect(INNER_ADDR, 'random')
+            #    except BTLEException as e:
+            #        print 'Could not connect'
+            letIn(inner_door, inner_w_ch)
+
         elif (state_failure == 0) and (prev_failure == 1):
             if DEBUG > 0:
                 print 'Fail.'
@@ -297,7 +308,6 @@ def main():
     if DEBUG > 0:
         print 'Cleaning up.'
     tf.stopStreamer()
-    del tf
     pygame.camera.quit()
     pygame.quit()
                 
