@@ -43,6 +43,7 @@ NAMES = ['@ShawnHymel'] #, '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = 'D4:2C:92:60:C2:D5'
+LOCK_DELAY = 2
 
 # GPIO pins
 SUCCESS_PIN = 31    # GP44
@@ -148,7 +149,7 @@ class TweetFeed:
     def startStreamer(self, search_terms):
         self.track_terms = [''.join([x, ' ']) for x in search_terms]
         if DEBUG > 0:
-            print 'Starting listening streamer looking for: ' + self.track_terms
+            print 'Starting listening streamer looking for: ' + str(self.track_terms)
         self.listen_thread = threading.Thread( \
                 target=self.__createStreamer, args=self.auth_args)
         self.listen_thread.daemon = True
@@ -222,20 +223,20 @@ def openDoor(p, w_ch, reed):
 
     # Unlock the door
     if DEBUG > 0:
-        print 'Unlocking inner door.'
+        print 'Unlocking door.'
     bleSend(p, w_ch, MSG_UNLOCK)
 
     # Wait for that door to be opened and then closed
     if DEBUG > 0:
         print 'Waiting for the door to be opened...'
-    while reed.read() == 0
+    while reed.read() == 0:
         pass
-    time.sleep(1)
+    time.sleep(LOCK_DELAY)
     if DEBUG > 0:
         print 'Waiting for the door to be closed...'
-    while reed.read() == 1
+    while reed.read() == 1:
         pass
-    time.sleep(2)
+    time.sleep(LOCK_DELAY)
     bleSend(p, w_ch, MSG_LOCK)
     
 # Send a message to a Lockitron
@@ -266,6 +267,10 @@ def main():
     prev_approve = 0
     prev_doorbell = 0
     prev_deny = 0
+
+    # Set direction of GPIO
+    reed_outer.dir(mraa.DIR_IN)
+    reed_inner.dir(mraa.DIR_IN)
     
     # Create Bluetooth connections to the RFduinos on the doors
     if DEBUG > 0:
