@@ -39,7 +39,7 @@ IMG_NAME = 'intruder.jpeg'
 ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
 SUCCESS_MSG = 'Welcome home, '
 FAILURE_MSG = 'Someone is at the door.'
-NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
+NAMES = ['@Sarah_Al_Mutlaq', '@ShawnHymel', '@NorthAllenPoole']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = 'D4:2C:92:60:C2:D5'
@@ -165,7 +165,7 @@ class TweetFeed:
                                             app_secret,
                                             oauth_token,
                                             oauth_token_secret )
-        self.track_stream.statuses.filter(track=self.track_terms)
+        self.track_stream.statuses.filter(track='@SFE_Fellowship') #self.track_terms)
         
     # [Public] Start streamer in a thread
     def startStreamer(self, search_term):
@@ -348,11 +348,17 @@ def main():
         
         # Look for success in access panel
         if (state_success == 0) and (prev_success == 1):
-            person_ind = 3 - ((2 * in_status_1.read()) + in_status_0.read())
-            if DEBUG > 0:
-                print 'Success!'
-                print 'Person = ' + NAMES[person_ind]
-            tf.tweet(SUCCESS_MSG + NAMES[person_ind])
+            person_ind = (2 * in_status_1.read()) + in_status_0.read()
+            if person_ind == 0:
+                if DEBUG > 0:
+                    print 'Success!'
+                    print 'No one in particular.'
+                tf.tweet(SUCCESS_MSG)
+            else:
+                if DEBUG > 0:
+                    print 'Success!'
+                    print 'Person = ' + NAMES[person_ind - 1]
+                tf.tweet(SUCCESS_MSG + NAMES[person_ind - 1])
             
             # Make sure we have a BLE connection first
             #ble_state = inner_door.status()['state'][0]
