@@ -53,6 +53,7 @@ REED_OUTER_PIN = 33 # GP48
 DOORBELL_PIN = 47   # GP49
 REED_INNER_PIN = 14 # GP13
 DENY_PIN = 36       # GP14
+APPROVE_PIN = 48     # GP15
 
 # Bluetooth message constants
 MSG_LOCK = 0x10
@@ -141,13 +142,13 @@ class TweetFeed:
                                             app_secret,
                                             oauth_token,
                                             oauth_token_secret )
-        self.track_stream.statuses.filter(track=self.track_terms)
+        self.track_stream.statuses.filter(track='@SFE_Fellowship')#self.track_terms)
         
     # [Public] Start streamer in a thread
     def startStreamer(self, search_terms):
-        if DEBUG > 0:
-            print 'Starting listening streamer'
         self.track_terms = [''.join([x, ' ']) for x in search_terms]
+        if DEBUG > 0:
+            print 'Starting listening streamer looking for: ' + self.track_terms
         self.listen_thread = threading.Thread( \
                 target=self.__createStreamer, args=self.auth_args)
         self.listen_thread.daemon = True
@@ -226,9 +227,12 @@ def openDoor(p, w_ch, reed):
 
     # Wait for that door to be opened and then closed
     if DEBUG > 0:
-        print 'Waiting for inner door to be opened and closed.'
+        print 'Waiting for the door to be opened...'
     while reed.read() == 0
         pass
+    time.sleep(1)
+    if DEBUG > 0:
+        print 'Waiting for the door to be closed...'
     while reed.read() == 1
         pass
     time.sleep(2)
@@ -256,12 +260,16 @@ def main():
     reed_outer = mraa.Gpio(REED_OUTER_PIN)
     reed_inner = mraa.Gpio(REED_INNER_PIN)
     deny_button = mraa.Gpio(DENY_PIN)
+    approve_button = mraa.Gpio(APPROVE_PIN)
     prev_success = 0
     prev_failure = 0
+    prev_approve = 0
     prev_doorbell = 0
     prev_deny = 0
     
     # Create Bluetooth connections to the RFduinos on the doors
+    if DEBUG > 0:
+        print 'Connecting to RFduinos...'
     inner_door = Peripheral(INNER_ADDR, 'random')
     outer_door = Peripheral(OUTER_ADDR, 'random')
     
@@ -276,6 +284,8 @@ def main():
     cam = pygame.camera.Camera(pygame.camera.list_cameras()[0])
     
     # Connect to Twitter and start listening
+    if DEBUG > 0:
+        print 'Connecting to Twitter...'
     tf = TweetFeed({'app_key': APP_KEY, \
                     'app_secret': APP_SECRET, \
                     'oauth_token': OAUTH_TOKEN, \
@@ -299,6 +309,7 @@ def main():
         state_failure = in_failure.read()
         state_doorbell = doorbell.read()
         state_deny = deny_button.read()
+        state_approve = approve_button.read()
         
         # Look for success in access panel
         if (state_success == 0) and (prev_success == 1):
@@ -335,12 +346,19 @@ def main():
         elif (state_deny == 0) and (prev_deny == 1):
             if DEBUG > 0:
                 print 'DENIED. Go away, and never come back.'
-            openOuter(outer_door, outer_w_ch, reed_outer)
+            openDoor(outer_door, outer_w_ch, reed_outer)
+            
+        # Look for an approve button push
+        elif (state_approve == 0) and (prev_approve == 1):
+            if DEBUG > 0:
+                print 'APPROVED. You may enter.'
+            openDoor(inner_door, inner_w_ch, reed_inner)
         
         prev_success = state_success
         prev_failure = state_failure
         prev_doorbell = state_doorbell
         prev_deny = state_deny
+        prev_approve = state_approve
                 
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
