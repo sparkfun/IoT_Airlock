@@ -39,7 +39,7 @@ IMG_NAME = 'intruder.jpeg'
 ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
 SUCCESS_MSG = 'Welcome home, '
 FAILURE_MSG = 'Someone is at the door.'
-NAMES = ['@ShawnHymel'] #, '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
+NAMES = ['@ShawnHymel', '@NorthAllenPoole', '@Sarah_Al_Mutlaq']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = 'D4:2C:92:60:C2:D5'
@@ -55,6 +55,11 @@ DOORBELL_PIN = 47   # GP49
 REED_INNER_PIN = 14 # GP13
 DENY_PIN = 36       # GP14
 APPROVE_PIN = 48     # GP15
+
+# Command set from Tweets
+TWEET_CLEAR = 0
+TWEET_LET_IN = 1
+TWEET_LET_OUT = 2
 
 # Bluetooth message constants
 MSG_LOCK = 0x10
@@ -98,7 +103,21 @@ class ListenStreamer(TwythonStreamer):
     # Callback from streamer when tweet matches the search term(s)
     def on_success(self, data):
         if 'text' in data:
-            print data['text'].encode('utf-8')
+            msg = data['text'].encode('utf-8')
+            if DEBUG > 0:
+                print msg
+            
+            # Verify that author is one of the approved members
+            if any(('@' + data['user']['screen_name']) in u for u in NAMES):
+            
+                # Look for a keyword in the Tweet
+                for word in msg.split():
+                    if word == 'in':
+                        self.parent.setCommand(TWEET_LET_IN)
+                        break
+                    elif word == 'out':
+                        self.parent.setCommand(TWEET_LET_OUT)
+                        break
                 
     # Callback from streamer if error occurs
     def on_error(self, status_code, data):
@@ -131,6 +150,9 @@ class TweetFeed:
                                 app_secret, 
                                 oauth_token, 
                                 oauth_token_secret)
+
+        # Create a variable that contains the type of message we received
+        self.command = 0
  
     # [Private] Set up streamer and filter(s)
     def __createStreamer(   self, 
@@ -143,11 +165,11 @@ class TweetFeed:
                                             app_secret,
                                             oauth_token,
                                             oauth_token_secret )
-        self.track_stream.statuses.filter(track='@SFE_Fellowship')#self.track_terms)
+        self.track_stream.statuses.filter(track=self.track_terms)
         
     # [Public] Start streamer in a thread
-    def startStreamer(self, search_terms):
-        self.track_terms = [''.join([x, ' ']) for x in search_terms]
+    def startStreamer(self, search_term):
+        self.track_terms = search_term
         if DEBUG > 0:
             print 'Starting listening streamer looking for: ' + str(self.track_terms)
         self.listen_thread = threading.Thread( \
@@ -206,6 +228,14 @@ class TweetFeed:
             print e
         finally:
             fp.close()
+
+    # [Public] Read the command flag
+    def getCommand(self):
+        return self.command
+
+    # [Public] Set the command flag
+    def setCommand(self, c):
+        self.command = c
  
 ################################################################################
 # Functions
@@ -295,7 +325,7 @@ def main():
                     'app_secret': APP_SECRET, \
                     'oauth_token': OAUTH_TOKEN, \
                     'oauth_token_secret': OAUTH_TOKEN_SECRET})
-    tf.startStreamer([HANDLE])
+    tf.startStreamer(HANDLE)
     
     # Send a good morning Tweet
     tf.tweet(ONLINE_MSG)
@@ -364,6 +394,17 @@ def main():
         prev_doorbell = state_doorbell
         prev_deny = state_deny
         prev_approve = state_approve
+
+        # See if we have a command from Twitter
+        if tf.getCommand() == TWEET_LET_IN:
+            openDoor(inner_door, inner_w_ch, reed_inner)
+            tf.setCommand(TWEET_CLEAR)
+        elif tf.getCommand() == TWEET_LET_OUT:
+            openDoor(outer_door, outer_w_ch, reed_outer)
+            tf.setCommand(TWEET_CLEAR)
+
+        # Wait a bit before next cycle
+        time.sleep(0.01)
                 
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
