@@ -165,7 +165,7 @@ class TweetFeed:
                                             app_secret,
                                             oauth_token,
                                             oauth_token_secret )
-        self.track_stream.statuses.filter(track='@SFE_Fellowship') #self.track_terms)
+        self.track_stream.statuses.filter(track=self.track_terms)
         
     # [Public] Start streamer in a thread
     def startStreamer(self, search_term):
