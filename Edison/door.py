@@ -251,6 +251,8 @@ def signalHandler(signal, frame):
 # Let someone in or out of the airlock
 def openDoor(p, w_ch, reed):
 
+    global g_mainloop
+
     # Unlock the door
     if DEBUG > 0:
         print 'Unlocking door.'
@@ -259,12 +261,12 @@ def openDoor(p, w_ch, reed):
     # Wait for that door to be opened and then closed
     if DEBUG > 0:
         print 'Waiting for the door to be opened...'
-    while reed.read() == 0:
+    while reed.read() == 0 and g_mainloop:
         pass
     time.sleep(LOCK_DELAY)
     if DEBUG > 0:
         print 'Waiting for the door to be closed...'
-    while reed.read() == 1:
+    while reed.read() == 1 and g_mainloop:
         pass
     time.sleep(LOCK_DELAY)
     bleSend(p, w_ch, MSG_LOCK)
