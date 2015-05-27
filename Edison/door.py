@@ -43,7 +43,7 @@ NAMES = ['@Sarah_Al_Mutlaq', '@ShawnHymel', '@NorthAllenPoole']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = 'D4:2C:92:60:C2:D5'
-LOCK_DELAY = 2
+LOCK_DELAY = 1 # Seconds
 
 # GPIO pins
 SUCCESS_PIN = 31    # GP44
@@ -54,7 +54,7 @@ REED_OUTER_PIN = 33 # GP48
 DOORBELL_PIN = 47   # GP49
 REED_INNER_PIN = 14 # GP13
 DENY_PIN = 36       # GP14
-APPROVE_PIN = 48     # GP15
+APPROVE_PIN = 48    # GP15
 
 # Command set from Tweets
 TWEET_CLEAR = 0
@@ -81,6 +81,8 @@ OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
 ################################################################################
 
 g_mainloop = False
+g_streamer = None
+g_command = 0
 
 ################################################################################
 # Classes
@@ -90,18 +92,22 @@ g_mainloop = False
 class ListenStreamer(TwythonStreamer):
 
     # [Constructor] Inherits a Twython streamer
-    def __init__(self, parent, app_key, app_secret, oauth_token, 
-                    oauth_token_secret, timeout=300, retry_count=None, 
-                    retry_in=10, client_args=None, handlers=None, 
-                    chunk_size=1):
-        TwythonStreamer.__init__(self, app_key, app_secret, oauth_token, 
-                    oauth_token_secret, timeout=300, retry_count=None, 
-                    retry_in=10, client_args=None, handlers=None, 
-                    chunk_size=1)
-        self.parent = parent
+    #def __init__(self, parent, app_key, app_secret, oauth_token, 
+    #                oauth_token_secret, timeout=300, retry_count=None, 
+    #                retry_in=10, client_args=None, handlers=None, 
+    #                chunk_size=1):
+    #    TwythonStreamer.__init__(self, app_key, app_secret, oauth_token, 
+    #                oauth_token_secret, timeout=300, retry_count=None, 
+    #                retry_in=10, client_args=None, handlers=None, 
+    #                chunk_size=1)
+    #    self.parent = parent
 
     # Callback from streamer when tweet matches the search term(s)
     def on_success(self, data):
+
+        global g_command
+
+        # See if we have a valid Tweet with text
         if 'text' in data:
             msg = data['text'].encode('utf-8')
             if DEBUG > 0:
@@ -113,10 +119,10 @@ class ListenStreamer(TwythonStreamer):
                 # Look for a keyword in the Tweet
                 for word in msg.split():
                     if word == 'in':
-                        self.parent.setCommand(TWEET_LET_IN)
+                        g_command = TWEET_LET_IN #self.parent.setCommand(TWEET_LET_IN)
                         break
                     elif word == 'out':
-                        self.parent.setCommand(TWEET_LET_OUT)
+                        g_command = TWEET_LET_OUT #self.parent.setCommand(TWEET_LET_OUT)
                         break
                 
     # Callback from streamer if error occurs
@@ -136,36 +142,28 @@ class TweetFeed:
     def __init__(self, twitter_auth):
     
         # Extract authentication tokens
-        app_key = twitter_auth['app_key']
-        app_secret = twitter_auth['app_secret']
-        oauth_token = twitter_auth['oauth_token']
-        oauth_token_secret = twitter_auth['oauth_token_secret']
-        self.auth_args = (  app_key, 
-                            app_secret, 
-                            oauth_token, 
-                            oauth_token_secret)
+        self.app_key = twitter_auth['app_key']
+        self.app_secret = twitter_auth['app_secret']
+        self.oauth_token = twitter_auth['oauth_token']
+        self.oauth_token_secret = twitter_auth['oauth_token_secret']
                             
         # Setup Twitter object to send tweets
-        self.twitter = Twython( app_key, 
-                                app_secret, 
-                                oauth_token, 
-                                oauth_token_secret)
+        self.twitter = Twython( self.app_key, 
+                                self.app_secret, 
+                                self.oauth_token, 
+                                self.oauth_token_secret)
 
         # Create a variable that contains the type of message we received
         self.command = 0
  
     # [Private] Set up streamer and filter(s)
-    def __createStreamer(   self, 
-                            app_key, 
-                            app_secret, 
-                            oauth_token, 
-                            oauth_token_secret ):
+    def __createStreamer(self): 
         self.track_stream = ListenStreamer( self, 
-                                            app_key, 
-                                            app_secret,
-                                            oauth_token,
-                                            oauth_token_secret )
-        self.track_stream.statuses.filter(track=self.track_terms)
+                                            self.app_key, 
+                                            self.app_secret,
+                                            self.oauth_token,
+                                            self.oauth_token_secret )
+        self.track_stream.statuses.filter(track=['@SFE_Fellowship']) #self.track_terms)
         
     # [Public] Start streamer in a thread
     def startStreamer(self, search_term):
@@ -173,7 +171,7 @@ class TweetFeed:
         if DEBUG > 0:
             print 'Starting listening streamer looking for: ' + str(self.track_terms)
         self.listen_thread = threading.Thread( \
-                target=self.__createStreamer, args=self.auth_args)
+                target=self.__createStreamer)
         self.listen_thread.daemon = True
         self.listen_thread.start()
         
@@ -247,6 +245,16 @@ def signalHandler(signal, frame):
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
     g_mainloop = False
+
+# Global Listener creation (test because the object one doesn't work)
+def createStreamer():
+    global g_streamer
+    time.sleep(5)
+    g_streamer = ListenStreamer(APP_KEY, \
+                                APP_SECRET, \
+                                OAUTH_TOKEN, \
+                                OAUTH_TOKEN_SECRET)
+    g_streamer.statuses.filter(track=HANDLE)
     
 # Let someone in or out of the airlock
 def openDoor(p, w_ch, reed):
@@ -269,6 +277,8 @@ def openDoor(p, w_ch, reed):
     while reed.read() == 1 and g_mainloop:
         pass
     time.sleep(LOCK_DELAY)
+    if DEBUG > 0:
+        print 'Door closed. Locking.'
     bleSend(p, w_ch, MSG_LOCK)
     
 # Send a message to a Lockitron
@@ -283,6 +293,8 @@ def bleSend(p, w_ch, msg):
 def main():
 
     global g_mainloop
+    global g_streamer
+    global g_command
 
     # Initialize GPIO
     in_success = mraa.Gpio(SUCCESS_PIN)
@@ -327,8 +339,11 @@ def main():
                     'app_secret': APP_SECRET, \
                     'oauth_token': OAUTH_TOKEN, \
                     'oauth_token_secret': OAUTH_TOKEN_SECRET})
-    tf.startStreamer(HANDLE)
-    
+    #tf.startStreamer([HANDLE])
+    listen_thread = threading.Thread(target=createStreamer)
+    listen_thread.daemon = True
+    listen_thread.start()
+
     # Send a good morning Tweet
     tf.tweet(ONLINE_MSG)
 
@@ -404,12 +419,12 @@ def main():
         prev_approve = state_approve
 
         # See if we have a command from Twitter
-        if tf.getCommand() == TWEET_LET_IN:
+        if g_command == TWEET_LET_IN: #tf.getCommand() == TWEET_LET_IN:
             openDoor(inner_door, inner_w_ch, reed_inner)
-            tf.setCommand(TWEET_CLEAR)
-        elif tf.getCommand() == TWEET_LET_OUT:
+            g_command = TWEET_CLEAR #tf.setCommand(TWEET_CLEAR)
+        elif g_command == TWEET_LET_OUT: #tf.getCommand() == TWEET_LET_OUT:
             openDoor(outer_door, outer_w_ch, reed_outer)
-            tf.setCommand(TWEET_CLEAR)
+            g_command = TWEET_CLEAR #tf.setCommand(TWEET_CLEAR)
 
         # Wait a bit before next cycle
         time.sleep(0.01)
@@ -417,7 +432,11 @@ def main():
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
         print 'Cleaning up.'
-    tf.stopStreamer()
+    #tf.stopStreamer()
+    g_streamer.stop()
+    listen_thread.join(None)
+    del listen_thread
+
     pygame.camera.quit()
     pygame.quit()
                 

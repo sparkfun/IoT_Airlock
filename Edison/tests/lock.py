@@ -1,7 +1,7 @@
 import binascii
 import struct
 import time
-from bluepy.bluepy.btle import UUID, Peripheral
+from .bluepy.btle import UUID, Peripheral
 
 # Message constants
 MSG_LOCK = 0x10
