@@ -48,8 +48,8 @@ LOCK_DELAY = 1 # Seconds
 # GPIO pins
 SUCCESS_PIN = 31    # GP44
 FAILURE_PIN = 45    # GP45
-STATUS_PIN_0 = 32   # GP46
-STATUS_PIN_1 = 46   # GP47
+STATUS_PIN_1 = 32   # GP46
+STATUS_PIN_0 = 46   # GP47
 REED_OUTER_PIN = 33 # GP48
 DOORBELL_PIN = 47   # GP49
 REED_INNER_PIN = 14 # GP13
@@ -119,10 +119,10 @@ class ListenStreamer(TwythonStreamer):
                 # Look for a keyword in the Tweet
                 for word in msg.split():
                     if word == 'in':
-                        g_command = TWEET_LET_IN #self.parent.setCommand(TWEET_LET_IN)
+                        g_command = TWEET_LET_IN
                         break
                     elif word == 'out':
-                        g_command = TWEET_LET_OUT #self.parent.setCommand(TWEET_LET_OUT)
+                        g_command = TWEET_LET_OUT
                         break
                 
     # Callback from streamer if error occurs
@@ -155,25 +155,6 @@ class TweetFeed:
 
         # Create a variable that contains the type of message we received
         self.command = 0
- 
-    # [Private] Set up streamer and filter(s)
-    def __createStreamer(self): 
-        self.track_stream = ListenStreamer( self, 
-                                            self.app_key, 
-                                            self.app_secret,
-                                            self.oauth_token,
-                                            self.oauth_token_secret )
-        self.track_stream.statuses.filter(track=['@SFE_Fellowship']) #self.track_terms)
-        
-    # [Public] Start streamer in a thread
-    def startStreamer(self, search_term):
-        self.track_terms = search_term
-        if DEBUG > 0:
-            print 'Starting listening streamer looking for: ' + str(self.track_terms)
-        self.listen_thread = threading.Thread( \
-                target=self.__createStreamer)
-        self.listen_thread.daemon = True
-        self.listen_thread.start()
         
     # [Public] Stop streamer
     def stopStreamer(self, timeout=None):
@@ -296,6 +277,16 @@ def main():
     global g_streamer
     global g_command
 
+    # Reset camera to prevent black/pink images on first run through
+    pygame.camera.init()
+    cam = pygame.camera.Camera(pygame.camera.list_cameras()[0])
+    cam.start()
+    img = cam.get_image()
+    pygame.image.save(img, IMG_NAME)
+    cam.stop()
+    pygame.camera.quit()
+    img = None
+
     # Initialize GPIO
     in_success = mraa.Gpio(SUCCESS_PIN)
     in_failure = mraa.Gpio(FAILURE_PIN)
@@ -339,7 +330,6 @@ def main():
                     'app_secret': APP_SECRET, \
                     'oauth_token': OAUTH_TOKEN, \
                     'oauth_token_secret': OAUTH_TOKEN_SECRET})
-    #tf.startStreamer([HANDLE])
     listen_thread = threading.Thread(target=createStreamer)
     listen_thread.daemon = True
     listen_thread.start()
@@ -365,6 +355,7 @@ def main():
         
         # Look for success in access panel
         if (state_success == 0) and (prev_success == 1):
+            openDoor(inner_door, inner_w_ch, reed_inner)
             person_ind = (2 * in_status_1.read()) + in_status_0.read()
             if person_ind == 0:
                 if DEBUG > 0:
@@ -376,17 +367,6 @@ def main():
                     print 'Success!'
                     print 'Person = ' + NAMES[person_ind - 1]
                 tf.tweet(SUCCESS_MSG + NAMES[person_ind - 1])
-            
-            # Make sure we have a BLE connection first
-            #ble_state = inner_door.status()['state'][0]
-            #while ble_state != 'conn':
-            #    if DEBUG > 0:
-            #        print 'Inner door disconnected. Trying to connect...'
-            #    try:
-            #        inner_door.connect(INNER_ADDR, 'random')
-            #    except BTLEException as e:
-            #        print 'Could not connect'
-            openDoor(inner_door, inner_w_ch, reed_inner)
 
         # Look for failure in access panel
         elif (state_failure == 0) and (prev_failure == 1):
@@ -419,12 +399,12 @@ def main():
         prev_approve = state_approve
 
         # See if we have a command from Twitter
-        if g_command == TWEET_LET_IN: #tf.getCommand() == TWEET_LET_IN:
+        if g_command == TWEET_LET_IN:
             openDoor(inner_door, inner_w_ch, reed_inner)
-            g_command = TWEET_CLEAR #tf.setCommand(TWEET_CLEAR)
-        elif g_command == TWEET_LET_OUT: #tf.getCommand() == TWEET_LET_OUT:
+            g_command = TWEET_CLEAR
+        elif g_command == TWEET_LET_OUT:
             openDoor(outer_door, outer_w_ch, reed_outer)
-            g_command = TWEET_CLEAR #tf.setCommand(TWEET_CLEAR)
+            g_command = TWEET_CLEAR
 
         # Wait a bit before next cycle
         time.sleep(0.01)
@@ -432,7 +412,6 @@ def main():
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
         print 'Cleaning up.'
-    #tf.stopStreamer()
     g_streamer.stop()
     listen_thread.join(None)
     del listen_thread
