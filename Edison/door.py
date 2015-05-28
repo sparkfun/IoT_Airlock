@@ -7,13 +7,22 @@
 # Runs on an Edison to receive input from an Arduino, which controls the
 # security sensors. The Edison posts photos of uncleared individuals to Twitter
 # and opens doors for cleared individuals.
+#
+# Seriously, this code is sketchy and finicky. Use at your own discretion. The
+# Edison has a habit of resetting the webcam, and there is a known bug where
+# SSH will slow to a crawl after running this code once. Annoying, I know. Feel
+# free to use any of the code you want (most of it seems to work without a
+# problem in separate pieces). I don't blame you if you don't use it to actually
+# control locks on your door. I wouldn't. It was made to be a silly demo.
+#
 # This code is beerware; if you see me (or any other SparkFun 
 # employee) at the local, and you've found our code helpful, please
 # buy us a round!
 # 
 # To install bluepy:
 # http://shawnhymel.com/665/using-python-and-ble-to-receive-data-from-the-rfduino/
-# Copy the bluepy folder to IoT_Airlock/Edison
+# Copy the bluepy folder to IoT_Airlock/Edison. You can also just call 'make' in
+# the bluepy folder, which builds bluepy in this project.
 #
 # Distributed as-is; no warranty is given.
 
@@ -71,10 +80,10 @@ READ_UUID = UUID(0x2221)
 WRITE_UUID = UUID(0x2222)
 
 # Twitter credentials
-APP_KEY = 'sppWdEK9E3RVjo70zOKr6p7y1'
-APP_SECRET = 'cRUKs3no6JSYubr6QqalgehhYfqIJYkNcvBLQMUIxfoUx9eQjB'
-OAUTH_TOKEN = '3220604167-IvvyfABekUBIhP1twLlgko4ufvwqG8HTYAg5m3F'
-OAUTH_TOKEN_SECRET = 'BoKwdbHc0tO4dQ15UZfutBrkmOkwL6J9DABA3YiBlsAH1'
+APP_KEY = 'xxxxxxxxxxxxx'
+APP_SECRET = 'xxxxxxxxxxxxx'
+OAUTH_TOKEN = 'xxxxxxxxxxxxx'
+OAUTH_TOKEN_SECRET = 'xxxxxxxxxxxxx'
 
 ################################################################################
 # Global Variables
