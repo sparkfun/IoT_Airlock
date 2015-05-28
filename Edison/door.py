@@ -304,8 +304,15 @@ def main():
     prev_deny = 0
 
     # Set direction of GPIO
+    in_success.dir(mraa.DIR_IN)
+    in_failure.dir(mraa.DIR_IN)
+    in_status_0.dir(mraa.DIR_IN)
+    in_status_1.dir(mraa.DIR_IN)
+    doorbell.dir(mraa.DIR_IN)
     reed_outer.dir(mraa.DIR_IN)
     reed_inner.dir(mraa.DIR_IN)
+    deny_button.dir(mraa.DIR_IN)
+    approve_button.dir(mraa.DIR_IN)
     
     # Create Bluetooth connections to the RFduinos on the doors
     if DEBUG > 0:
