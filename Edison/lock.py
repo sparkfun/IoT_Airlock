@@ -13,7 +13,7 @@ read_uuid = UUID(0x2221)
 write_uuid = UUID(0x2222)
 
 # Create a connection to the RFduino
-p = Peripheral("F9:D8:C2:B9:77:E9", "random")
+#p = Peripheral("F9:D8:C2:B9:77:E9", "random")
 p = Peripheral("D4:2C:92:60:C2:D5", "random")
 
 

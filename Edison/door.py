@@ -51,7 +51,7 @@ NAMES = ['@Sarah_Al_Mutlaq', '@ShawnHymel', '@NorthAllenPoole']
 HANDLE = '@SFE_Fellowship'
 INNER_ADDR = 'F9:D8:C2:B9:77:E9'
 OUTER_ADDR = 'D4:2C:92:60:C2:D5'
-LOCK_DELAY = 1 # Seconds
+LOCK_DELAY = 2 # Seconds
 
 # GPIO pins
 SUCCESS_PIN = 31    # GP44
@@ -74,10 +74,10 @@ READ_UUID = UUID(0x2221)
 WRITE_UUID = UUID(0x2222)
 
 # Twitter credentials
-APP_KEY = 'xxxxxxxxxxxxx'
-APP_SECRET = 'xxxxxxxxxxxxx'
-OAUTH_TOKEN = 'xxxxxxxxxxxxx'
-OAUTH_TOKEN_SECRET = 'xxxxxxxxxxxxx'
+APP_KEY = 'xxx'
+APP_SECRET = 'xxx'
+OAUTH_TOKEN = 'xxx'
+OAUTH_TOKEN_SECRET = 'xxx'
 
 ################################################################################
 # Global Variables
