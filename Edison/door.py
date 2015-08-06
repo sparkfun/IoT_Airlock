@@ -12,7 +12,7 @@
 # Edison has a habit of resetting the webcam, and there is a known bug where
 # SSH will slow to a crawl after running this code once. Annoying, I know. Feel
 # free to use any of the code you want (most of it seems to work without a
-# problem in separate pieces). I don't blame you if you don't use it to actually
+# problem in separate pieces). I won't blame you if you don't use it to actually
 # control locks on your door. I wouldn't. It was made to be a silly demo.
 #
 # This code is beerware; if you see me (or any other SparkFun 
@@ -30,7 +30,7 @@
 # Global Constants
 ################################################################################
 
-from twython import Twython, TwythonStreamer, TwythonError
+from twython import Twython
 from bluepy.btle import UUID, Peripheral
 import pygame.camera
 import pygame.image
@@ -43,7 +43,6 @@ import struct
 
 # Parameters
 DEBUG = 1
-STOP_STREAM_ON_FAIL = True
 IMG_NAME = 'intruder.jpeg'
 ONLINE_MSG = 'Good morning! I am awake and ready to protect the door.'
 SUCCESS_MSG = 'Welcome home, '
@@ -65,11 +64,6 @@ REED_INNER_PIN = 14 # GP13
 DENY_PIN = 36       # GP14
 APPROVE_PIN = 48    # GP15
 
-# Command set from Tweets
-TWEET_CLEAR = 0
-TWEET_LET_IN = 1
-TWEET_LET_OUT = 2
-
 # Bluetooth message constants
 MSG_LOCK = 0x10
 MSG_UNLOCK = 0x11
@@ -90,61 +84,13 @@ OAUTH_TOKEN_SECRET = 'xxxxxxxxxxxxx'
 ################################################################################
 
 g_mainloop = False
-g_streamer = None
 g_command = 0
 
 ################################################################################
 # Classes
 ################################################################################
 
-# Streamer class. Use this to look for commands on Twitter.
-class ListenStreamer(TwythonStreamer):
-
-    # [Constructor] Inherits a Twython streamer
-    #def __init__(self, parent, app_key, app_secret, oauth_token, 
-    #                oauth_token_secret, timeout=300, retry_count=None, 
-    #                retry_in=10, client_args=None, handlers=None, 
-    #                chunk_size=1):
-    #    TwythonStreamer.__init__(self, app_key, app_secret, oauth_token, 
-    #                oauth_token_secret, timeout=300, retry_count=None, 
-    #                retry_in=10, client_args=None, handlers=None, 
-    #                chunk_size=1)
-    #    self.parent = parent
-
-    # Callback from streamer when tweet matches the search term(s)
-    def on_success(self, data):
-
-        global g_command
-
-        # See if we have a valid Tweet with text
-        if 'text' in data:
-            msg = data['text'].encode('utf-8')
-            if DEBUG > 0:
-                print msg
-            
-            # Verify that author is one of the approved members
-            if any(('@' + data['user']['screen_name']) in u for u in NAMES):
-            
-                # Look for a keyword in the Tweet
-                for word in msg.split():
-                    if word == 'in':
-                        g_command = TWEET_LET_IN
-                        break
-                    elif word == 'out':
-                        g_command = TWEET_LET_OUT
-                        break
-                
-    # Callback from streamer if error occurs
-    def on_error(self, status_code, data):
-        print status_code, data
-        if STOP_STREAM_ON_FAIL:
-            self.stop()
-        
-    # Called from main thread to stop the streamer
-    def stop(self):
-        self.disconnect()
-
-# TweetFeed class sets up the streamer and provides access to the tweets
+# TweetFeed class provides access to the tweets
 class TweetFeed:
 
     # [Constructor] Set up streamer thread
@@ -161,15 +107,6 @@ class TweetFeed:
                                 self.app_secret, 
                                 self.oauth_token, 
                                 self.oauth_token_secret)
-
-        # Create a variable that contains the type of message we received
-        self.command = 0
-        
-    # [Public] Stop streamer
-    def stopStreamer(self, timeout=None):
-        self.track_stream.stop()
-        self.listen_thread.join(timeout)
-        del self.listen_thread
 
     # [Public] Send a Tweet
     def tweet(self, msg):
@@ -216,14 +153,6 @@ class TweetFeed:
             print e
         finally:
             fp.close()
-
-    # [Public] Read the command flag
-    def getCommand(self):
-        return self.command
-
-    # [Public] Set the command flag
-    def setCommand(self, c):
-        self.command = c
  
 ################################################################################
 # Functions
@@ -235,16 +164,6 @@ def signalHandler(signal, frame):
     if DEBUG > 0:
         print 'Ctrl-C pressed. Exiting nicely.'
     g_mainloop = False
-
-# Global Listener creation (test because the object one doesn't work)
-def createStreamer():
-    global g_streamer
-    time.sleep(5)
-    g_streamer = ListenStreamer(APP_KEY, \
-                                APP_SECRET, \
-                                OAUTH_TOKEN, \
-                                OAUTH_TOKEN_SECRET)
-    g_streamer.statuses.filter(track=HANDLE)
     
 # Let someone in or out of the airlock
 def openDoor(p, w_ch, reed):
@@ -283,7 +202,6 @@ def bleSend(p, w_ch, msg):
 def main():
 
     global g_mainloop
-    global g_streamer
     global g_command
 
     # Reset camera to prevent black/pink images on first run through
@@ -339,16 +257,13 @@ def main():
     pygame.camera.init()
     cam = pygame.camera.Camera(pygame.camera.list_cameras()[0])
     
-    # Connect to Twitter and start listening
+    # Connect to Twitter
     if DEBUG > 0:
         print 'Connecting to Twitter...'
     tf = TweetFeed({'app_key': APP_KEY, \
                     'app_secret': APP_SECRET, \
                     'oauth_token': OAUTH_TOKEN, \
                     'oauth_token_secret': OAUTH_TOKEN_SECRET})
-    listen_thread = threading.Thread(target=createStreamer)
-    listen_thread.daemon = True
-    listen_thread.start()
 
     # Send a good morning Tweet
     tf.tweet(ONLINE_MSG)
@@ -414,23 +329,12 @@ def main():
         prev_deny = state_deny
         prev_approve = state_approve
 
-        # See if we have a command from Twitter
-        if g_command == TWEET_LET_IN:
-            openDoor(inner_door, inner_w_ch, reed_inner)
-            g_command = TWEET_CLEAR
-        elif g_command == TWEET_LET_OUT:
-            openDoor(outer_door, outer_w_ch, reed_outer)
-            g_command = TWEET_CLEAR
-
         # Wait a bit before next cycle
         time.sleep(0.01)
                 
     # Outside of main loop. Cleanup and cuddles.
     if DEBUG > 0:
         print 'Cleaning up.'
-    g_streamer.stop()
-    listen_thread.join(None)
-    del listen_thread
 
     pygame.camera.quit()
     pygame.quit()
